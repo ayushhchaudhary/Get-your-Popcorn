@@ -21,11 +21,8 @@ const DateSelect = ({ dateTime, id }) => {
         <BlurCircle top="100px" right="0px" />
         <div>
           <p className="text-lg font-semibold">Choose Date</p>
-          <div className="flex items-center fap-6 text-sm mt-5 ">
-            <ChevronLeftIcon
-              width={28}
-              className=" hover:text-primary-dull"
-            />
+          <div className="flex items-center gap-6 text-sm mt-5 ">
+            <ChevronLeftIcon width={28} className=" hover:text-primary-dull" />
             <span className="grid grid-cols-4 md:flex flex-wrap md:max-w-lg gap-4">
               {Object.keys(dateTime).map((date) => (
                 <button
@@ -45,10 +42,7 @@ const DateSelect = ({ dateTime, id }) => {
                 </button>
               ))}
             </span>
-            <ChevronRightIcon
-              width={28}
-              className=" hover:text-primary-dull"
-            />
+            <ChevronRightIcon width={28} className=" hover:text-primary-dull" />
           </div>
         </div>
         <button
