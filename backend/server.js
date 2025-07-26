@@ -14,7 +14,11 @@ await connectDB();
 // Middleware
 app.use(express.json());
 app.use(cors());
-// app.use(clerkMiddleware());
+app.use(
+  clerkMiddleware({
+    apiKey: process.env.CLERK_SECRET_KEY,
+  })
+);
 
 //API routes
 app.get("/", (req, res) => res.send("Server is Live!"));
@@ -24,4 +28,3 @@ app.listen(port, () =>
   console.log(`Server Listening at http://localhost:${port}`)
 );
 
-// export default app
