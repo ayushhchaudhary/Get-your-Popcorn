@@ -15,9 +15,7 @@ await connectDB();
 app.use(express.json());
 app.use(cors());
 app.use(
-  clerkMiddleware({
-    apiKey: process.env.CLERK_SECRET_KEY,
-  })
+  clerkMiddleware()
 );
 
 //API routes
