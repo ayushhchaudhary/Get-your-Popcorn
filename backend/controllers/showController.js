@@ -1,22 +1,93 @@
 import axios from "axios";
 import Movie from "../models/Movie.js";
 import Show from "../models/Show.js";
+import https from "https"; // Import https module for custom agent
+
+// --- Utility function for retries ---
+// This function helps handle intermittent network errors like ECONNRESET
+async function makeRequestWithRetry(
+  url,
+  config,
+  maxRetries = 6,
+  initialDelay = 500
+) {
+  let retries = 0;
+  while (retries < maxRetries) {
+    try {
+      const response = await axios.get(url, config); // This function is designed for GET requests
+      return response; // Return the full response object
+    } catch (error) {
+      // Log the error for debugging
+      console.error(
+        `[Axios Request Failed] URL: ${url}, Error Code: ${error.code}, Message: ${error.message}`
+      );
+
+      // Check if it's a retryable network error
+      if (
+        error.code === "ECONNRESET" ||
+        error.code === "ETIMEDOUT" ||
+        error.code === "ERR_NETWORK"
+      ) {
+        console.warn(
+          `[Retry Attempt ${
+            retries + 1
+          }/${maxRetries}] Retrying connection for ${url}...`
+        );
+        retries++;
+        const delay = initialDelay * Math.pow(2, retries - 1); // Exponential backoff
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+      // Check for SSL certificate error (specific to college network issue)
+      else if (error.code === "SELF_SIGNED_CERT_IN_CHAIN") {
+        console.error(`[SSL Error] Self-signed certificate in chain for ${url}. This often indicates a proxy/firewall issue.
+                                Consider setting NODE_TLS_REJECT_UNAUTHORIZED=0 for development ONLY.
+                                If you're using a custom httpsAgent, ensure it's configured correctly.`);
+        throw error; // This error is usually not retryable automatically unless you change network or configuration
+      } else {
+        // Re-throw other types of errors immediately (e.g., 400s, 500s from API, invalid JSON)
+        console.error(
+          `[Fatal Error] Request to ${url} failed with unretryable error:`,
+          error.message
+        );
+        throw error;
+      }
+    }
+  }
+  // If all retries fail, throw an error
+  throw new Error(
+    `Failed to fetch data from ${url} after ${maxRetries} attempts.`
+  );
+}
+
+// --- Optional: HTTPS Agent for development on networks with SSL inspection ---
+// IMPORTANT: This should be conditionally applied in development, NOT in production.
+// You might want to use an environment variable like process.env.NODE_ENV === 'development'
+const agent = new https.Agent({
+  // Set to false ONLY if NODE_ENV is NOT 'production'
+  // Ensure you set NODE_ENV=production when deploying to production
+  rejectUnauthorized: process.env.NODE_ENV !== "production",
+});
 
 //API to get currently playing movies from TMDB API
 export const getNowPlayingMovies = async (req, res) => {
   try {
-    const { data } = await axios.get(
+    // Configuration for the Axios request
+    const config = {
+      headers: { Authorization: `Bearer ${process.env.TMDB_API_KEY}` },
+      httpsAgent: agent, // Apply the custom agent for development SSL issues
+    };
+
+    // Use the retry mechanism for the TMDB API call
+    const response = await makeRequestWithRetry(
       "https://api.themoviedb.org/3/movie/now_playing",
-      {
-        headers: { Authorization: `Bearer ${process.env.TMDB_API_KEY}` },
-      }
+      config
     );
 
-    const movies = data.results;
+    const movies = response.data.results; // Access data from the response object
     res.json({ success: true, movies: movies });
   } catch (error) {
-    console.error(error);
-    res.json({ success: false, message: error.message });
+    console.error("Error in getNowPlayingMovies:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -25,23 +96,38 @@ export const addShow = async (req, res) => {
   try {
     const { movieId, showsInput, showPrice } = req.body;
 
+    // Basic validation
+    if (!movieId || !showsInput || showsInput.length === 0 || !showPrice) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Required fields missing." });
+    }
+
     let movie = await Movie.findById(movieId);
     if (!movie) {
+      // Configuration for the Axios requests to TMDB
+      const config = {
+        headers: { Authorization: `Bearer ${process.env.TMDB_API_KEY}` },
+        httpsAgent: agent, // Apply the custom agent for development SSL issues
+      };
+
       //fetch movie details and credits from TMDB API
       const [movieDetailsResponse, movieCreditsResponse] = await Promise.all([
-        axios.get(`https://api.themoviedb.org/3/movie/${movieId}`, {
-          headers: { Authorization: `Bearer ${process.env.TMDB_API_KEY}` },
-        }),
-        axios.get(`https://api.themoviedb.org/3/movie/${movieId}/credits`, {
-          headers: { Authorization: `Bearer ${process.env.TMDB_API_KEY}` },
-        }),
+        makeRequestWithRetry(
+          `https://api.themoviedb.org/3/movie/${movieId}`,
+          config
+        ),
+        makeRequestWithRetry(
+          `https://api.themoviedb.org/3/movie/${movieId}/credits`,
+          config
+        ),
       ]);
 
       const movieApiData = movieDetailsResponse.data;
       const movieCreditsData = movieCreditsResponse.data;
 
       const MovieDetails = {
-        _id: movieId,
+        _id: movieId, // Use TMDB's movie ID as your _id
         title: movieApiData.title,
         overview: movieApiData.overview,
         poster_path: movieApiData.poster_path,
@@ -57,18 +143,31 @@ export const addShow = async (req, res) => {
       //adding movie to the database.
       movie = await Movie.create(MovieDetails);
     }
+
     const showsToCreate = [];
     showsInput.forEach((show) => {
       const showDate = show.date;
-      show.time.forEach((time) => {
-        const dateTimeString = `${showDate}T${time}`;
+      // Assuming `show.time` is an array of times for a given date
+      if (Array.isArray(show.time)) {
+        show.time.forEach((time) => {
+          const dateTimeString = `${showDate}T${time}`;
+          showsToCreate.push({
+            movie: movieId,
+            showDateTime: new Date(dateTimeString),
+            showPrice,
+            occupiedSeats: {}, // Initialize as empty object
+          });
+        });
+      } else {
+        // Handle case where show.time might be a single string if your frontend sends it differently
+        const dateTimeString = `${showDate}T${show.time}`;
         showsToCreate.push({
           movie: movieId,
           showDateTime: new Date(dateTimeString),
           showPrice,
           occupiedSeats: {},
         });
-      });
+      }
     });
 
     if (showsToCreate.length > 0) {
@@ -77,8 +176,8 @@ export const addShow = async (req, res) => {
 
     res.json({ success: true, message: "Show Added successfully." });
   } catch (error) {
-    console.error(error);
-    res.json({ success: false, message: error.message });
+    console.error("Error in addShow:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -90,14 +189,19 @@ export const getShows = async (req, res) => {
       .populate("movie")
       .sort({ showDateTime: 1 });
 
-    //filter unique shows
+    //filter unique shows (assuming unique by movie ID)
+    // This logic might need refinement if you truly want unique *shows* not unique *movies that have shows*
+    const uniqueMovies = new Map(); // Use a Map to maintain order and uniqueness
+    shows.forEach((show) => {
+      if (show.movie && !uniqueMovies.has(show.movie._id.toString())) {
+        uniqueMovies.set(show.movie._id.toString(), show.movie);
+      }
+    });
 
-    const uniqueShows = new Set(shows.map((show) => show.movie));
-
-    res.json({ success: true, shows: Array.from(uniqueShows) });
+    res.json({ success: true, shows: Array.from(uniqueMovies.values()) });
   } catch (error) {
-    console.error(error);
-    res.json({ success: false, message: error.message });
+    console.error("Error in getShows:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
@@ -112,8 +216,15 @@ export const getShow = async (req, res) => {
       showDateTime: {
         $gte: new Date(),
       },
-    });
+    }).sort({ showDateTime: 1 }); // Sort to ensure consistent time ordering
+
     const movie = await Movie.findById(movieId);
+
+    if (!movie) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Movie not found." });
+    }
 
     const dateTime = {};
 
@@ -122,10 +233,23 @@ export const getShow = async (req, res) => {
       if (!dateTime[date]) {
         dateTime[date] = [];
       }
-      dateTime[date].push({ time: show.showDateTime, showId: show._id });
+      // Ensure times are stored as strings for consistency with frontend
+      // and sort them to ensure consistent display
+      const timeString = show.showDateTime
+        .toISOString()
+        .split("T")[1]
+        .substring(0, 5); // e.g., "14:30"
+      dateTime[date].push({ time: timeString, showId: show._id });
     });
+
+    // Sort times within each date
+    for (const date in dateTime) {
+      dateTime[date].sort((a, b) => a.time.localeCompare(b.time));
+    }
+
     res.json({ success: true, movie, dateTime });
   } catch (error) {
-    res.json({ success: false, message: error.message });
+    console.error("Error in getShow:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
