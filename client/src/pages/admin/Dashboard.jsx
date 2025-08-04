@@ -6,7 +6,6 @@ import {
   UserIcon,
 } from "lucide-react";
 import React, { useState } from "react";
-import { dummyDashboardData } from "../../assets/assets";
 import { useEffect } from "react";
 import Loading from "../../components/Loading";
 import Title from "../../components/admin/Title";

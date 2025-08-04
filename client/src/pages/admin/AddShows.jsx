@@ -72,10 +72,10 @@ const AddShows = () => {
       const showsInput = Object.entries(dateTimeSelection).map(
         ([date, time]) => ({ date, time })
       );
-      const payload = {
+        const payload = {
         movieId: selectedMovie,
         showsInput,
-        showPrice: Number(showPrice),
+        showPrice: Number(showPrice), 
       };
 
       const { data } = await axios.post("/api/show/add", payload, {
