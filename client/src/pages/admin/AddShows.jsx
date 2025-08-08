@@ -64,18 +64,19 @@ const AddShows = () => {
 
       if (
         !selectedMovie ||
-        Object.keys(dateTimeSelection).length === 0 || !showPrice)
-     {
+        Object.keys(dateTimeSelection).length === 0 ||
+        !showPrice
+      ) {
         return toast("Required fields missing.");
       }
 
       const showsInput = Object.entries(dateTimeSelection).map(
         ([date, time]) => ({ date, time })
       );
-        const payload = {
+      const payload = {
         movieId: selectedMovie,
         showsInput,
-        showPrice: Number(showPrice), 
+        showPrice: Number(showPrice),
       };
 
       const { data } = await axios.post("/api/show/add", payload, {
@@ -85,7 +86,7 @@ const AddShows = () => {
       if (data.success) {
         toast.success(data.message);
         setSelectedMovie(null);
-        setDateTimeSelection ({});
+        setDateTimeSelection({});
         setShowPrice("");
       } else {
         toast.error(data.message);
@@ -94,7 +95,7 @@ const AddShows = () => {
       console.error("Submission error:", error);
       toast.error("An error occurred, please try again.");
     }
-    setAddingShow(false)
+    setAddingShow(false);
   };
 
   useEffect(() => {
@@ -160,7 +161,7 @@ const AddShows = () => {
       {/* Date & Time Selection */}
       <div className="mt-6">
         <label className="block text-sm font-medium mb-2">
-          Select Date and Time
+          Select Date and Time (Time is +3 hours)
         </label>
         <div className="inline-flex gap-5 border border-gray-600 p-1 pl-3 rounded-lg">
           <input
