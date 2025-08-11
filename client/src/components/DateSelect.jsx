@@ -12,11 +12,11 @@ const DateSelect = ({ dateTime, id }) => {
       return toast("Please select a date");
     }
     navigate(`/movies/${id}/${selected}`);
-    scrollTo(0, 0);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
   return (
     <div id="dateSelect" className="pt-30">
-      <div className="flex flow-row items-center justify-between gap-10 relative p-8 bg-primary/10 border border-primary/20 rounded-lg">
+      <div className="flex flex-row items-center justify-between gap-10 relative p-8 bg-primary/10 border border-primary/20 rounded-lg">
         <BlurCircle top="-100px" left="-100px" />
         <BlurCircle top="100px" right="0px" />
         <div>
